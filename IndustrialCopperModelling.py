@@ -8,19 +8,25 @@ from sklearn.preprocessing import LabelEncoder
 
 # Load the data
 df = pd.read_csv("/content/IndustryCopperCleaned.csv")
+# Convert specified columns to strings
+columns_to_convert_to_str = ['country', 'application', 'item type', 'material_ref', 'customer']
+df[columns_to_convert_to_str] = df[columns_to_convert_to_str].astype(str)
+
+# Perform encoding
+label_encoders = {}
+for col in columns_to_convert_to_str + ['id', 'product_ref', 'status']:  # Include 'id', 'product_ref', and 'status' in columns to encode
+    label_encoders[col] = LabelEncoder()
+    df[col + '_encoded'] = label_encoders[col].fit_transform(df[col])
 
 # Preprocessing
-label_encoders = {}
-categorical_columns = ['country', 'application', 'item type_encoded', 'product_ref_encoded', 'material_ref_encoded', 'customer_encoded']
+categorical_columns = ['country', 'application', 'item type', 'product_ref', 'material_ref', 'customer', 'id', 'status']
 
 for col in categorical_columns:
-    le = LabelEncoder()
-    df[col] = le.fit_transform(df[col])
-    label_encoders[col] = le
+    df[col + '_encoded'] = label_encoders[col].transform(df[col])  # Reuse the existing label encoders
 
 # Splitting the data into features and target
 selling_price_cols = [
-    'quantity tons', 'country', 'application', 'thickness', 'width',
+    'quantity tons', 'country_encoded', 'application_encoded', 'thickness', 'width',
     'id_encoded', 'status_encoded', 'item type_encoded', 'product_ref_encoded',
     'delivery_period', 'material_ref_encoded', 'customer_encoded'
 ]
@@ -29,7 +35,7 @@ X_selling_price = df[selling_price_cols]
 Y_selling_price = df['selling_price']
 
 status_cols = [
-    'quantity tons', 'country', 'application', 'thickness', 'width',
+    'quantity tons', 'country_encoded', 'application_encoded', 'thickness', 'width',
     'id_encoded', 'item type_encoded', 'product_ref_encoded',
     'delivery_period', 'material_ref_encoded', 'customer_encoded',
     'selling_price'
@@ -55,17 +61,11 @@ xgb_regressor.fit(X_train_sp, Y_train_sp)
 rf_classifier_status = RandomForestClassifier(n_estimators=100, random_state=42)
 rf_classifier_status.fit(X_train_st, Y_train_st)
 
+# Inverse Transformation function for 'status'
+def inverse_transform_status(encoded_status):
+    return label_encoders['status'].inverse_transform(encoded_status)
+
 # Streamlit app
-def predict_selling_price(params):
-    prediction_dt = dt_regressor.predict(params)
-    prediction_rf = rf_regressor.predict(params)
-    prediction_xgb = xgb_regressor.predict(params)
-    return prediction_dt, prediction_rf, prediction_xgb
-
-def predict_status(params):
-    prediction = rf_classifier_status.predict(params)
-    return prediction
-
 def main():
     st.title('Selling Price and Status Predictor')
 
@@ -73,28 +73,42 @@ def main():
     st.sidebar.title('Selling Price Prediction')
     sp_params = {}  # Fill this with the parameters
     for idx, col in enumerate(selling_price_cols):
-        sp_params[col] = st.sidebar.selectbox(f"Select {col}", df[col].unique(), key=f"sp_{col}_{idx}")
+        if col.endswith('_encoded'):  # Check if the column is encoded
+            original_col = col.replace('_encoded', '')  # Get the original column name
+            selected_value = st.sidebar.selectbox(f"Select {original_col}", df[original_col].unique(), key=f"sp_{original_col}_{idx}")
+            sp_params[col] = label_encoders[original_col].transform([selected_value])[0]  # Encode the selected value
+        else:
+            sp_params[col] = st.sidebar.selectbox(f"Select {col}", df[col].unique(), key=f"sp_{col}_{idx}")
 
     # Input parameters for status prediction
     st.sidebar.title('Status Prediction')
     st_params = {}  # Fill this with the parameters
     for idx, col in enumerate(status_cols):
-        st_params[col] = st.sidebar.selectbox(f"Select {col}", df[col].unique(), key=f"st_{col}_{idx}")
+        if col.endswith('_encoded'):  # Check if the column is encoded
+            original_col = col.replace('_encoded', '')  # Get the original column name
+            selected_value = st.sidebar.selectbox(f"Select {original_col}", df[original_col].unique(), key=f"st_{original_col}_{idx}")
+            st_params[col] = label_encoders[original_col].transform([selected_value])[0]  # Encode the selected value
+        else:
+            st_params[col] = st.sidebar.selectbox(f"Select {col}", df[col].unique(), key=f"st_{col}_{idx}")
 
-    # Button to trigger predictions
     if st.sidebar.button('Predict'):
         sp_input = pd.DataFrame(sp_params, index=[0])
         st_input = pd.DataFrame(st_params, index=[0])
 
         # Predictions
-        dt_sp, rf_sp, xgb_sp = predict_selling_price(sp_input)
-        status_pred = predict_status(st_input)
+        dt_sp = dt_regressor.predict(sp_input)
+        rf_sp = rf_regressor.predict(sp_input)
+        xgb_sp = xgb_regressor.predict(sp_input)
+        status_pred_encoded = rf_classifier_status.predict(st_input)
+
+        # Inverse transform 'status' predictions
+        status_pred_original = inverse_transform_status(status_pred_encoded)
 
         # Display predictions
         st.write('**Selling Price Prediction - Decision Tree:**', dt_sp)
         st.write('**Selling Price Prediction - Random Forest:**', rf_sp)
         st.write('**Selling Price Prediction - XGBoost:**', xgb_sp)
-        st.write('**Status Prediction:**', status_pred)
+        st.write('**Status Prediction:**', status_pred_original)
 
 if __name__ == '__main__':
     main()
