@@ -1,4 +1,6 @@
 # Industrial-Copper-Modelling
+![Industrial Copper Modelling](https://github.com/ssprakash5/Industrial-Copper-Modelling/assets/154003057/ae59d807-f062-437f-900d-99cceeea1adf)
+
 Industrial Copper Modeling Project
 Project Overview
 This project focuses on leveraging machine learning techniques to address challenges in the copper industry related to sales, pricing, and lead classification. It involves building regression and classification models to predict selling prices and classify leads as "Won" or "Lost" respectively, along with creating a Streamlit-based web application for model deployment.
